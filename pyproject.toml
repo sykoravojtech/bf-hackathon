@@ -6,12 +6,9 @@ authors = [
     {name = "Vojtěch Sýkora",email = "vojtasykor@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
 ]
-
-[tool.poetry]
-packages = [{include = "bf_hackathon", from = "src"}]
 
 
 [build-system]
