@@ -8,6 +8,9 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "mediapipe (>=0.10.21,<0.11.0)",
+    "opencv-python (>=4.11.0.86,<5.0.0.0)",
+    "gdown (>=5.2.0,<6.0.0)"
 ]
 
 
