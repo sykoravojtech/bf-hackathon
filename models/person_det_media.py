@@ -141,7 +141,7 @@ class real_det:
         return bboxs
 
 
-def human_is_close(img_size, bboxes, threshold=0.20):
+def human_is_close(img_size, bboxes, threshold=0.15):
     """
     Check if any human is close based on bounding box size
 
