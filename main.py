@@ -1,80 +1,121 @@
 import time
 from typing import Callable
 
-from sensors.display import show_display
-from sensors.moving import rotate, set_velocity
-from sensors.speaker import speaker_say
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String, Int32, Float32, Bool
+from sensor_msgs.msg import PointCloud2, Image
 
+# Import waypoint navigation functionality
+from functions.waypoint import WaypointNavigator  # Assuming functions/waypoint.py contains this class
 
-class Controller:
-    def __init__(
-        self,
-        speaker_say: Callable,
-        rotate: Callable,
-        set_velocity: Callable,
-        show_display: Callable,
-    ):
+class Controller(Node):
+    def __init__(self):
+        super().__init__("robot_controller")
+
+        # Publishers
+        self.speaker_pub = self.create_publisher(String, "speaker_say", 10)
+        self.rotate_pub = self.create_publisher(Float32, "rotate", 10)
+        self.velocity_pub = self.create_publisher(Float32, "set_velocity", 10)
+        self.display_pub = self.create_publisher(String, "show_display", 10)
+
+        # Subscribers
+        self.create_subscription(String, "odometry", self.odometry_callback, 10)
+        self.create_subscription(Image, "camera", self.camera_callback, 10)
+        self.create_subscription(PointCloud2, "lidar", self.lidar_callback, 10)
+        self.create_subscription(String, "microphone", self.microphone_callback, 10)
+        self.create_subscription(Int32, "touch", self.touch_callback, 10)
+
         self.robot_on = True
-        self.speaker_say = speaker_say
-        self.rotate = rotate
-        self.set_velocity = set_velocity
-        self.show_display = show_display
+        self.odometry = {"position": None, "direction": None, "speed": None}
+        self.camera = None
+        self.lidar = None
+        self.microphone = None
+        self.touch = None
 
-    def scenario_check_loop(self, authometry: dict, camera, lidar, microphone, touch):
+        # Initialize waypoint navigator
+        self.waypoint_navigator = WaypointNavigator(self)
+
+    def odometry_callback(self, msg):
+        self.get_logger().info(f"Received odometry: {msg.data}")
+        self.odometry["position"] = msg.data
+
+    def camera_callback(self, msg):
+        self.get_logger().info("Received camera data")
+        self.camera = msg
+
+    def lidar_callback(self, msg):
+        self.get_logger().info("Received lidar data")
+        self.lidar = msg
+
+    def microphone_callback(self, msg):
+        self.get_logger().info(f"Received microphone input: {msg.data}")
+        self.microphone = msg.data
+
+    def touch_callback(self, msg):
+        self.get_logger().info(f"Received touch input: {msg.data}")
+        self.touch = msg.data
+
+    def scenario_check_loop(self):
         """
         Checks all scenarios. If one is happening run it. If none is happening just continue.
         """
-        print("Checking every scenario")
+        self.get_logger().info("Checking every scenario")
 
         try:
             user_input = input("Enter a number (or 'quit' to exit): ")
             if user_input.lower() == "quit":
                 self.robot_on = False
-                self.speaker_say("Shutting down")
+                self.speaker_pub.publish(String(data="Shutting down"))
                 return
 
             try:
                 number = int(user_input)
-                print(f"You entered: {number}")
+                self.get_logger().info(f"You entered: {number}")
             except ValueError:
-                print("Invalid input. Please enter a number or 'quit'")
-                self.speaker_say("Invalid input, please try again")
+                self.get_logger().info("Invalid input. Please enter a number or 'quit'")
+                self.speaker_pub.publish(String(data="Invalid input, please try again"))
         except KeyboardInterrupt:
             self.robot_on = False
-            self.speaker_say("Shutting down")
+            self.speaker_pub.publish(String(data="Shutting down"))
 
+    def navigate_to_waypoints(self):
+        """
+        Navigate to predefined waypoints A and B with confirmation.
+        """
+        self.get_logger().info("Navigating to waypoint A...")
+        if self.waypoint_navigator.send_goal_by_name("poseA"):  # Replace "A" with actual coordinates if needed
+            print("goal A sent")
+            self.get_logger().info("Successfully reached waypoint A.")
+        else:
+            self.get_logger().error("Failed to reach waypoint A.")
+            return
 
-def main():
-    print("Starting Program")
+        self.get_logger().info("Navigating to waypoint B...")
+        if self.waypoint_navigator.send_goal_by_name("poseB"):  # Replace "B" with actual coordinates if needed
+            self.get_logger().info("Successfully reached waypoint B.")
+        else:
+            self.get_logger().error("Failed to reach waypoint B.")
+            return
 
-    # initialize all thats needed
+def main(args=None):
+    rclpy.init(args=args)
 
-    # All possible inputs into our program
-    authometry = {"position": None, "direction": None, "speed": None}
-    camera = None
-    lidar = None  # 3D point cloud
-    microphone = None  # voice mp3 input?
-    touch: int = (
-        None  # each button has an int assigned so for example 1:turn_left, 2:turn_right
-    )
+    controller = Controller()
 
-    # All possible outputs of our program
-    speaker_fn = speaker_say
-    rotate_fn = rotate
-    velocity_fn = set_velocity
-    display_fn = show_display
+    # Run the node
+    try:
+        # Navigate to waypoints first
+        controller.navigate_to_waypoints()
 
-    controller = Controller(
-        speaker_say=speaker_fn,
-        rotate=rotate_fn,
-        set_velocity=velocity_fn,
-        show_display=display_fn,
-    )
-
-    # Check every second if any scenario is happening
-    while controller.robot_on:
-        controller.scenario_check_loop(authometry, camera, lidar, microphone, touch)
-        time.sleep(1)
+        while controller.robot_on:
+            rclpy.spin_once(controller, timeout_sec=1)
+            controller.scenario_check_loop()
+    except KeyboardInterrupt:
+        controller.get_logger().info("Shutting down node...")
+    finally:
+        controller.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":
