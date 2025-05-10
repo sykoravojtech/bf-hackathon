@@ -86,7 +86,6 @@ class Controller(Node):
         self.get_logger().info("Navigating to waypoint A...")
         if self.waypoint_navigator.send_goal_by_name("poseA"):  # Replace "A" with actual coordinates if needed
             print("goal A sent")
-            
             self.get_logger().info("Successfully reached waypoint A.")
         else:
             self.get_logger().error("Failed to reach waypoint A.")

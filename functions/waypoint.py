@@ -82,9 +82,14 @@ class WaypointNavigator:
 
     def behavior_tree_callback(self, msg):
         """Callback to process BehaviorTreeLog messages."""
+        success_states = ["SUCCESS", "IDLE"]
+        relevant_nodes = ["NavigateRecovery", "NavigateWithReplanning", "FollowPath"]
+
         for entry in msg.behavior_tree_status_changes:
-            if entry.status == "SUCCESS":  # Check for successful navigation
-                self.node.get_logger().info("Behavior tree indicates navigation success.")
+            if entry.node_name in relevant_nodes and entry.current_status in success_states:
+                self.node.get_logger().info(
+                    f"Behavior tree indicates success for node '{entry.node_name}' with status '{entry.current_status}'."
+                )
                 self.navigation_complete = True
                 self.publish_confirmation()
                 break
