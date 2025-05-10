@@ -61,10 +61,26 @@ button_1 = Button(
     relief="flat"
 )
 button_1.place(
-    x=798.0,
-    y=911.0,
-    width=313.0,
-    height=109.0
+    x=832.0,
+    y=922.0,
+    width=256.0,
+    height=91.0
 )
+
+button_image_hover_1 = PhotoImage(
+    file=relative_to_assets("button_hover_1.png"))
+
+def button_1_hover(e):
+    button_1.config(
+        image=button_image_hover_1
+    )
+def button_1_leave(e):
+    button_1.config(
+        image=button_image_1
+    )
+
+button_1.bind('<Enter>', button_1_hover)
+button_1.bind('<Leave>', button_1_leave)
+
 window.resizable(False, False)
 window.mainloop()
