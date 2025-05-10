@@ -4,5 +4,7 @@ dist/
 poetry.lock
 models/mediapipe_old
 __pycache__
+data/warehouse
+output/
 
 # Ignore data folder but not the url.txt file
