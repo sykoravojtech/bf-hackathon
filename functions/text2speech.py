@@ -1,11 +1,11 @@
 from gtts import gTTS
-import os
+from playsound import playsound
 
 def text_to_speech(text, lang='en'):
     tts = gTTS(text=text, lang=lang)
     tts.save("output.mp3")
-    os.system("mpg321 output.mp3")  # You can use another player if mpg321 is not available
+    playsound("output.mp3")  # Play the audio immediately
 
 if __name__ == "__main__":
-    text = "Hello, this is a text to speech test."
+    text = input("Enter the text to convert to speech: ")  # Prompt for text input
     text_to_speech(text)

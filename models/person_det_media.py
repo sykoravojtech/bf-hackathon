@@ -1,69 +1,44 @@
-import argparse
-import os
-import time
-
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 import cv2
 import mediapipe as mp
 import numpy as np
 
-# import time
-# from mediapipe.python._framework_bindings import timestamp
 
-
-class real_det:
-    def __init__(self, path="mobilenetv2_ssd_256_uint8.tflite", score_threshold=0.3):
-        # Timestamp = timestamp.Timestamp
-        model_path = path
+class RealDet:
+    def __init__(self, path="mobilenetv2_ssd_256_uint8.tflite", score_threshold=0.1):
+        print("Initializing RealDet...")
         BaseOptions = mp.tasks.BaseOptions
         ObjectDetector = mp.tasks.vision.ObjectDetector
         ObjectDetectorOptions = mp.tasks.vision.ObjectDetectorOptions
         VisionRunningMode = mp.tasks.vision.RunningMode
-        self.frame_index = 1
-        self.fps = 30
-        self.results = None
-        self.score_threshold = score_threshold
 
-        # Try using IMAGE mode first, which is more reliable for single images
+        self.score_threshold = score_threshold
         self.image_mode = True
+
         try:
             image_options = ObjectDetectorOptions(
-                base_options=BaseOptions(model_asset_path=model_path),
+                base_options=BaseOptions(model_asset_path=path),
                 running_mode=VisionRunningMode.IMAGE,
                 max_results=10,
                 score_threshold=self.score_threshold,
             )
             self.image_detector = ObjectDetector.create_from_options(image_options)
+            print("Image detector initialized successfully.")
         except Exception as e:
             print(f"Warning: Could not initialize image mode: {e}")
             self.image_mode = False
 
-        # Always initialize live stream mode as fallback
-        live_options = ObjectDetectorOptions(
-            base_options=BaseOptions(model_asset_path=model_path),
-            running_mode=VisionRunningMode.LIVE_STREAM,
-            max_results=10,
-            score_threshold=self.score_threshold,
-            result_callback=self.print_result,
-        )
-        self.detector = ObjectDetector.create_from_options(live_options)
-
-    def print_result(
-        self,
-        result: mp.tasks.components.containers.DetectionResult,
-        output_image: mp.Image,
-        timestamp_ms: int,
-    ):
-        # print('detection result: {}'.format(result))
-        self.results = result
-
     def detect_person(self, frame):
+        print("Starting person detection...")
         bboxs = []
-
-        # First try image mode (synchronous and more reliable)
         if self.image_mode:
             try:
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
                 results = self.image_detector.detect(mp_image)
+                print("Detection results obtained.")
                 if results and results.detections:
                     for res in results.detections:
                         if (
@@ -92,175 +67,62 @@ class real_det:
                                 (0, 255, 0),
                                 1,
                             )
-                return bboxs  # Return results from image mode if available
+                            print(f"Person detected with score: {score}%")
             except Exception as e:
-                print(f"Image mode detection failed, falling back to live stream: {e}")
-                # Fall through to live stream mode if image mode fails
-
-        # Fallback to live stream mode
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-        # Calculate the timestamp of the current frame
-        frame_timestamp_ms = int(1000 * self.frame_index / self.fps)
-
-        # Reset results before detection
-        self.results = None
-
-        # Perform object detection on the video frame
-        self.detector.detect_async(mp_image, frame_timestamp_ms)
-
-        # Wait a bit for results to be processed through the callback
-        max_wait = 0.5  # Maximum wait time in seconds
-        start_time = time.time()
-        while self.results is None and time.time() - start_time < max_wait:
-            time.sleep(0.01)  # Small sleep to avoid busy waiting
-
-        if self.results:
-            det_res = self.results.detections
-            for res in det_res:
-                if (
-                    res.categories[0].category_name == "person"
-                    and res.categories[0].score > self.score_threshold
-                ):
-                    bbox = res.bounding_box
-                    x1, y1, w, h = bbox.origin_x, bbox.origin_y, bbox.width, bbox.height
-                    x2, y2 = x1 + w, y1 + h
-                    bboxs.append([x1, y1, x2, y2])
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), thickness=2)
-                    score = int(res.categories[0].score * 100)
-                    cv2.putText(
-                        frame,
-                        f"Person {score}%",
-                        (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5,
-                        (0, 255, 0),
-                        1,
-                    )
-
-        self.frame_index = self.frame_index + 1
+                print(f"Detection failed: {e}")
+        else:
+            print("Image mode is not enabled.")
+        print("Person detection completed.")
         return bboxs
 
 
-def human_is_close(img_size, bboxes, threshold=0.15):
-    """
-    Check if any human is close based on bounding box size
-
-    Args:
-        img_size: Tuple of (width, height) of the image
-        bboxes: List of bounding boxes in [x1, y1, x2, y2] format
-        threshold: Area threshold (0.0-1.0) for considering a human as close
-
-    Returns:
-        bool: True if any human is close, False otherwise
-    """
-    img_width, img_height = img_size
-    img_area = img_width * img_height
-
-    for bbox in bboxes:
-        x1, y1, x2, y2 = bbox
-        # Calculate area of the bounding box
-        bbox_width = x2 - x1
-        bbox_height = y2 - y1
-        bbox_area = bbox_width * bbox_height
-
-        # Calculate the ratio of bbox area to image area
-        area_ratio = bbox_area / img_area
-        print(f"==> BBOX/IMG = {area_ratio*100:.2f}%")
-
-        if area_ratio > threshold:
-            return True
-
-    return False
-
-
-if __name__ == "__main__":
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Person detection using MediaPipe")
-    parser.add_argument(
-        "--input", "-i", type=str, required=True, help="Path to input image"
-    )
-    parser.add_argument(
-        "--output",
-        "-o",
-        type=str,
-        default="output/human_det.jpg",
-        help="Path to output image",
-    )
-    parser.add_argument(
-        "--display", "-d", action="store_true", help="Display output image"
-    )
-    parser.add_argument(
-        "--model",
-        "-m",
-        type=str,
-        default="models/mobilenetv2_ssd_256_uint8.tflite",
-        help="Path to model file",
-    )
-    parser.add_argument(
-        "--threshold",
-        "-t",
-        type=float,
-        default=0.4,
-        help="Detection score threshold (0.0-1.0)",
-    )
-    args = parser.parse_args()
-
-    # Check if input file exists
-    if not os.path.isfile(args.input):
-        print(f"Error: Input file '{args.input}' does not exist")
-        exit(1)
-
-    # Read the input image
-    frame = cv2.imread(args.input)
-    if frame is None:
-        print(f"Error: Could not read image '{args.input}'")
-        exit(1)
-
-    # Initialize detector with the provided model path
-    try:
-        detector = real_det(path=args.model, score_threshold=args.threshold)
-    except Exception as e:
-        print(f"Error initializing detector: {e}")
-        exit(1)
-
-    # Detect people in the image
-    print(f"Detecting people in '{args.input}'...")
-    bboxes = detector.detect_person(frame)
-    # Get image size from frame
-    img_height, img_width = frame.shape[:2]
-
-    # Using default threshold (0.20 or 20% of image)
-    if human_is_close((img_width, img_height), bboxes):
-        print("Human is close")
-
-    # Using custom threshold (e.g., 30% of image)
-    if human_is_close((img_width, img_height), bboxes, threshold=0.30):
-        print("Human is very close")
-
-    # Add detection info on the image
-    for i, bbox in enumerate(bboxes):
-        x1, y1, x2, y2 = bbox
-        # Add label with confidence score
-        cv2.putText(
-            frame,
-            f"Person {i+1}",
-            (x1, y1 - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 0),
-            2,
+class VideoStreamProcessor(Node):
+    def __init__(self):
+        print("Initializing VideoStreamProcessor node...")
+        super().__init__('video_stream_processor')
+        self.subscription = self.create_subscription(
+            Image,
+            '/baumer/image',
+            self.listener_callback,
+            10
         )
+        print("Subscription to /baumer/image topic created.")
+        self.publisher = self.create_publisher(Image, '/output/image', 10)
+        print("Publisher to /output/image topic created.")
+        self.bridge = CvBridge()
+        print("CvBridge initialized.")
+        self.detector = RealDet(path="models/mobilenetv2_ssd_256_uint8.tflite", score_threshold=0.1)
+        print("RealDet object created.")
 
-    # Show results
-    print(f"Found {len(bboxes)} people in the image")
+    def listener_callback(self, msg):
+        print("Received a new image message.")
+        # Convert ROS Image message to OpenCV image
+        frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        print("Converted ROS Image message to OpenCV image.")
 
-    # Save the output image
-    cv2.imwrite(args.output, frame)
-    print(f"Output image saved to '{args.output}'")
+        # Detect people in the frame
+        bboxes = self.detector.detect_person(frame)
+        print(f"Detected {len(bboxes)} person(s) in the frame.")
 
-    # Display if requested
-    if args.display:
-        cv2.imshow("Person Detection", frame)
-        print("Press any key to exit...")
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        # Publish the processed frame with bounding boxes
+        output_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+        self.publisher.publish(output_msg)
+        print("Published processed frame to /output/image topic.")
+
+
+def main(args=None):
+    print("Starting main function...")
+    rclpy.init(args=args)
+    print("rclpy initialized.")
+    video_stream_processor = VideoStreamProcessor()
+    print("VideoStreamProcessor node created.")
+    rclpy.spin(video_stream_processor)
+    print("Spinning VideoStreamProcessor node...")
+    video_stream_processor.destroy_node()
+    print("VideoStreamProcessor node destroyed.")
+    rclpy.shutdown()
+    print("rclpy shutdown completed.")
+
+
+if __name__ == '__main__':
+    main()
