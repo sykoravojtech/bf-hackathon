@@ -166,6 +166,7 @@ def recognize_gesture(landmarks) -> str:
         return "Three"
     elif (
         thumb_extended
+        or thumb_vertical
         and index_extended
         and middle_extended
         and ring_extended
