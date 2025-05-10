@@ -6,6 +6,29 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image, PointCloud2
 from std_msgs.msg import Bool, Float32, Int32, String
 
+# Import waypoint navigation functionality
+from functions.waypoint import (
+    WaypointNavigator,  # Assuming functions/waypoint.py contains this class
+)
+
+
+class Controller(Node):
+    def __init__(self):
+        super().__init__("robot_controller")
+
+        # Publishers
+        self.speaker_pub = self.create_publisher(String, "speaker_say", 10)
+        self.rotate_pub = self.create_publisher(Float32, "rotate", 10)
+        self.velocity_pub = self.create_publisher(Float32, "set_velocity", 10)
+        self.display_pub = self.create_publisher(String, "show_display", 10)
+
+        # Subscribers
+        self.create_subscription(String, "odometry", self.odometry_callback, 10)
+        self.create_subscription(Image, "camera", self.camera_callback, 10)
+        self.create_subscription(PointCloud2, "lidar", self.lidar_callback, 10)
+        self.create_subscription(String, "microphone", self.microphone_callback, 10)
+        self.create_subscription(Int32, "touch", self.touch_callback, 10)
+
 
 class Controller(Node):
     def __init__(self):
@@ -73,6 +96,20 @@ class Controller(Node):
         except KeyboardInterrupt:
             self.robot_on = False
             self.speaker_pub.publish(String(data="Shutting down"))
+
+    def navigate_to_waypoints(self):
+        """
+        Navigate to predefined waypoints A and B with confirmation.
+        """
+        self.get_logger().info("Navigating to waypoint A...")
+        if self.waypoint_navigator.send_goal_by_name(
+            "poseA"
+        ):  # Replace "A" with actual coordinates if needed
+            print("goal A sent")
+            self.get_logger().info("Successfully reached waypoint A.")
+        else:
+            self.get_logger().error("Failed to reach waypoint A.")
+            return
 
 
 def main(args=None):
