@@ -6,7 +6,3 @@ models/mediapipe_old
 __pycache__
 
 # Ignore data folder but not the url.txt file
-data/*
-!data/leapGestRecog/
-data/leapGestRecog/*
-!data/leapGestRecog/url.txt
