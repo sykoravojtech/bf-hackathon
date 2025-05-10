@@ -11,7 +11,7 @@ from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage
 
 
 OUTPUT_PATH = Path(__file__).parent
-ASSETS_PATH = OUTPUT_PATH / Path(r"C:\Users\nicol\OneDrive\Documents\GitHub\bf-hackathon\build\assets\frame0")
+ASSETS_PATH = OUTPUT_PATH / Path(r"C:\Users\nicol\OneDrive\Documents\GitHub\bf-hackathon\gui\wait\build\assets\frame0")
 
 
 def relative_to_assets(path: str) -> Path:
@@ -41,14 +41,6 @@ image_1 = canvas.create_image(
     190.0,
     127.0,
     image=image_image_1
-)
-
-image_image_2 = PhotoImage(
-    file=relative_to_assets("image_2.png"))
-image_2 = canvas.create_image(
-    974.0,
-    540.0,
-    image=image_image_2
 )
 
 button_image_1 = PhotoImage(
@@ -82,5 +74,13 @@ def button_1_leave(e):
 button_1.bind('<Enter>', button_1_hover)
 button_1.bind('<Leave>', button_1_leave)
 
+
+image_image_2 = PhotoImage(
+    file=relative_to_assets("image_2.png"))
+image_2 = canvas.create_image(
+    980.0,
+    528.0,
+    image=image_image_2
+)
 window.resizable(False, False)
 window.mainloop()
