@@ -8,3 +8,6 @@ data/warehouse
 output/
 
 # Ignore data folder but not the url.txt file
+*.avi
+*.mp4
+*.pt
