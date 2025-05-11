@@ -2,6 +2,7 @@ from nav2_msgs.msg import BehaviorTreeLog
 from std_msgs.msg import String
 from geometry_msgs.msg import PoseStamped
 from action_msgs.msg import GoalStatusArray
+import rclpy
 
 class WaypointNavigator:
     def __init__(self, node):
@@ -9,35 +10,55 @@ class WaypointNavigator:
         Initialize the WaypointNavigator with an existing ROS 2 node.
         :param node: An instance of rclpy.node.Node
         """
+        print("Initializing WaypointNavigator")
         self.node = node
 
         # Publishers and subscribers
         self.goal_pub = self.node.create_publisher(PoseStamped, '/goal_pose', 10)
-        self.status_sub = self.node.create_subscription(GoalStatusArray, '/move_base/status', self.status_callback, 10)
         self.confirmation_pub = self.node.create_publisher(String, '/navigation/confirmation', 10)
         self.behavior_tree_sub = self.node.create_subscription(BehaviorTreeLog, '/behavior_tree_log', self.behavior_tree_callback, 10)
 
-        self.navigation_complete = False
-
-        # Dictionary to store waypoints
         self.waypoints = {
-            "poseA": {
-            "position": {"x": 1.3124427795410156, "y": -0.18059289455413818, "z": 0.0},
-            "orientation": {"x": 0.0, "y": 0.0, "z": 0.024976282819221766, "w": 0.999688043989991}
-            },
-            "poseB": {
-            "position": {"x": 2.776034355163574, "y": 2.025285482406616, "z": 0.0},
-            "orientation": {"x": 0.0, "y": 0.0, "z": -0.7526690658395774, "w": 0.65839902591679}
-            },
-            "base": {
+            "base_pose": {
             "position": {"x": 0.0, "y": 0.0, "z": 0.0},
             "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
+            },
+            "serve_location": {
+            "position": {"x": 0.8551623821258545, "y": -0.455843448638916, "z": 0.0},
+            "orientation": {"x": 0.0, "y": 0.0, "z": 0.04786416406388591, "w": 0.9988538540739909}
+            },
+            "fridge1": {
+            "position": {"x": 2.897230625152588, "y": 2.248413562774658, "z": 0.0},
+            "orientation": {"x": 0.0, "y": 0.0, "z": -0.8103592937024221, "w": 0.585933285545472}
             }
         }
 
+    def behavior_tree_callback(self, msg):
+        """
+        Process behavior tree log messages and publish navigation status updates.
+        This function will only exit when a final outcome is received.
+        """
+        self.behavior_tree_msg = msg
+        print("Behavior tree callback triggered.")
+        # final_outcome_received = False
+
+        # previous_status = None
+        # while not final_outcome_received:
+        #     for event in msg.event_log:
+        #     if event.node_name == "NavigateRecovery":
+        #         if previous_status in ["SUCCESS", "FAILURE"] and event.current_status == "IDLE":
+        #         final_outcome_received = True
+        #         self.node.get_logger().info(f"Final outcome: {previous_status} -> {event.current_status}")
+        #         self.confirmation_pub.publish(String(data=f"Navigation {previous_status.lower()} -> {event.current_status.lower()}"))
+        #         break
+        #         elif event.current_status in ["RUNNING", "PENDING", "UNKNOWN"]:
+        #         self.node.get_logger().info(f"Current status: {event.current_status}")
+        #         self.confirmation_pub.publish(String(data=f"Navigation {event.current_status.lower()}"))
+        #         previous_status = event.current_status
+    
     def send_goal(self, position, orientation):
         """Send a 2D goal pose to the navigation topic."""
-        print("Sending goal to navigation in sending function")
+        print("Entering send_goal")
         goal = PoseStamped()
         goal.header.frame_id = "map"
         goal.header.stamp = self.node.get_clock().now().to_msg()
@@ -52,51 +73,34 @@ class WaypointNavigator:
         self.node.get_logger().info(f"Sending goal: position={position}, orientation={orientation}")
         self.goal_pub.publish(goal)
         self.navigation_complete = False
+       
+
+        # timeout = 30.0  # Timeout in seconds
+        # start_time = self.node.get_clock().now().nanoseconds / 1e9
+
+        # while not self.navigation_complete:
+        #     # rclpy.spin_once(self.node, timeout_sec=1.0)
+        #     # current_time = self.node.get_clock().now().nanoseconds / 1e9
+        #     # if current_time - start_time > timeout:
+        #         # self.node.get_logger().error("Navigation timed out.")
+        #     if self.navigation_complete:
+        #         self.node.get_logger().info("Navigation succeeded.")
+        #         return True  # Indicate success
+        #     else:
+        #         self.node.get_logger().error("Navigation failed.")
+        #         return False  # Indicate failure
+        print("Exiting send_goal")
 
     def send_goal_by_name(self, waypoint_name):
         """Send a goal by waypoint name."""
-        print("in send_goal_by_name")
+        print("Entering send_goal_by_name")
         if waypoint_name in self.waypoints:
             waypoint = self.waypoints[waypoint_name]
+            print(f"Found waypoint: {waypoint_name}")
             self.send_goal(waypoint["position"], waypoint["orientation"])
         else:
+            print(f"Waypoint '{waypoint_name}' not found")
             self.node.get_logger().error(f"Waypoint '{waypoint_name}' not found.")
+        print("Exiting send_goal_by_name")
 
-    def update_waypoint(self, waypoint_name, position, orientation):
-        """Update the position and orientation of a waypoint."""
-        if waypoint_name in self.waypoints:
-            self.waypoints[waypoint_name]["position"] = position
-            self.waypoints[waypoint_name]["orientation"] = orientation
-            self.node.get_logger().info(f"Updated waypoint '{waypoint_name}' to position={position}, orientation={orientation}")
-        else:
-            self.node.get_logger().error(f"Waypoint '{waypoint_name}' not found.")
 
-    def status_callback(self, msg):
-        """Callback to check the status of the navigation."""
-        for status in msg.status_list:
-            if status.status == 3:  # Status 3 means the goal was reached
-                self.node.get_logger().info("Navigation goal reached.")
-                self.navigation_complete = True
-                self.publish_confirmation()
-                break
-
-    def behavior_tree_callback(self, msg):
-        """Callback to process BehaviorTreeLog messages."""
-        success_states = ["SUCCESS", "IDLE"]
-        relevant_nodes = ["NavigateRecovery", "NavigateWithReplanning", "FollowPath"]
-
-        for entry in msg.behavior_tree_status_changes:
-            if entry.node_name in relevant_nodes and entry.current_status in success_states:
-                self.node.get_logger().info(
-                    f"Behavior tree indicates success for node '{entry.node_name}' with status '{entry.current_status}'."
-                )
-                self.navigation_complete = True
-                self.publish_confirmation()
-                break
-
-    def publish_confirmation(self):
-        """Publish confirmation that navigation is complete."""
-        confirmation_msg = String()
-        confirmation_msg.data = "Navigation complete"
-        self.confirmation_pub.publish(confirmation_msg)
-        self.node.get_logger().info("Published navigation confirmation.")

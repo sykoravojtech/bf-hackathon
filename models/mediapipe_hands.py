@@ -3,9 +3,11 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
+from std_srvs.srv import Trigger
 import cv2
 import mediapipe as mp
 import numpy as np
+
 
 class HandGestureNode(Node):
     def __init__(self):
@@ -25,6 +27,14 @@ class HandGestureNode(Node):
             Image, "/baumer/image", self.image_callback, 10
         )
         self.image_pub = self.create_publisher(Image, "/output_image_topic", 10)
+
+        # ROS 2 Service for triggering detection
+        self.trigger_service = self.create_service(
+            Trigger, "trigger_hand_detection", self.trigger_callback
+        )
+
+        self.latest_image = None
+        self.detection_enabled = False
 
     def recognize_gesture(self, landmarks) -> str:
         # Gesture recognition logic (same as in the given program)
@@ -89,6 +99,13 @@ class HandGestureNode(Node):
             return "Unknown Gesture"
 
     def image_callback(self, msg: Image):
+        # Store the latest image for processing
+        self.latest_image = msg
+
+        if self.detection_enabled:
+            self.process_image(msg)
+
+    def process_image(self, msg: Image):
         # Convert ROS Image message to OpenCV image
         cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
 
@@ -131,6 +148,18 @@ class HandGestureNode(Node):
         # Publish the annotated image
         output_msg = self.bridge.cv2_to_imgmsg(annotated_image, encoding="bgr8")
         self.image_pub.publish(output_msg)
+
+    def trigger_callback(self, request, response):
+        if self.latest_image:
+            self.detection_enabled = True
+            self.process_image(self.latest_image)
+            self.detection_enabled = False
+            response.success = True
+            response.message = "Hand detection triggered successfully."
+        else:
+            response.success = False
+            response.message = "No image available for processing."
+        return response
 
 
 def main(args=None):

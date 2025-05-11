@@ -1,30 +1,23 @@
-#!/usr/bin/env python
-from __future__ import print_function
-import sys
-import rospy
-import httplib
-from std_msgs.msg import String
+import rclpy
+from rclpy.node import Node
+import http.client as httplib
 import speech_recognition as sr
+from std_msgs.msg import String
 
-class SpeechRecognizer(object):
-
+class SpeechRecognizer(Node):
     def __init__(self):
-        rospy.init_node("speech_recognizer")
-        self.pub = rospy.Publisher("speech_recognizer", String, latch=True, queue_size=1)
-        self.model_directory = rospy.get_param('~model_directory')
-        self.use_kaldi = rospy.get_param('~use_kaldi')
+        super().__init__("speech_recognizer")
+        self.publisher_ = self.create_publisher(String, "speech_recognizer", 10)
         self.recognizer = sr.Recognizer()
-        if self.use_kaldi:
-            try:
-                self.recognizer.load_kaldi_model(model_directory=self.model_directory)
-            except:
-                self.use_kaldi = False
-                rospy.logerr(sys.exc_info()[0])
-                rospy.logerr('Unable to load Kaldi model. Using PocketSphinx as offline speech recognition')
         self.microphone = sr.Microphone()
 
-    @staticmethod
-    def check_internet_connection():
+        self.get_logger().info("Adjusting for ambient noise...")
+        with self.microphone as source:
+            self.recognizer.adjust_for_ambient_noise(source)
+
+        self.timer = self.create_timer(0.1, self.recognize_speech)
+
+    def check_internet_connection(self):
         connection = httplib.HTTPConnection("www.google.com", timeout=5)
         try:
             connection.request("HEAD", "/")
@@ -34,48 +27,43 @@ class SpeechRecognizer(object):
             connection.close()
             return False
 
-    def recognize(self):
-        with self.microphone as source:
-            self.recognizer.adjust_for_ambient_noise(source)
-
+    def recognize_speech(self):
+        self.get_logger().info('Listening...')
         try:
-            while not rospy.is_shutdown():
-                rospy.loginfo('Listening...')
-                with self.microphone as source:
-                    audio = self.recognizer.listen(source)
-                rospy.loginfo('Got a sound; recognizing...')
+            with self.microphone as source:
+                audio = self.recognizer.listen(source)
+            self.get_logger().info('Got a sound; recognizing...')
 
-                """
-                Google over PocketSphinx: In case there is a internet connection
-                use google, otherwise use pocketsphinx for speech recognition.
-                """
-                recognized_speech = ""
-                if SpeechRecognizer.check_internet_connection():
-                    try:
-                        recognized_speech = self.recognizer.recognize_google(audio)
-                    except sr.UnknownValueError:
-                        rospy.logerr("Could not understand audio.")
-                    except sr.RequestError:
-                        rospy.logerr("Could not request results.")
-                else:
-                    try:
-                        if self.use_kaldi:
-                            recognized_speech = self.recognizer.recognize_kaldi(audio)[0]
-                        else:
-                            recognized_speech = self.recognizer.recognize_sphinx(audio)
-                    except sr.UnknownValueError:
-                        rospy.logerr("Could not understand audio.")
-                    except sr.RequestError:
-                        rospy.logerr("Could not request results.")
+            recognized_speech = ""
+            if self.check_internet_connection():
+                try:
+                    recognized_speech = self.recognizer.recognize_google(audio)
+                except sr.UnknownValueError:
+                    self.get_logger().error("Could not understand audio.")
+                except sr.RequestError:
+                    self.get_logger().error("Could not request results.")
+            else:
+                self.get_logger().error("No internet connection. Unable to use Google Speech Recognition.")
 
-                if recognized_speech != "":
-                    rospy.loginfo("You said: " + recognized_speech)
-                    self.pub.publish(recognized_speech)
+            if recognized_speech:
+                self.get_logger().info("You said: " + recognized_speech)
+                msg = String()
+                msg.data = recognized_speech
+                self.publisher_.publish(msg)
 
         except Exception as exc:
-            rospy.logerr(exc)
+            self.get_logger().error(f"Error: {exc}")
 
-def main():
+def main(args=None):
+    rclpy.init(args=args)
     speech_recognizer = SpeechRecognizer()
-    speech_recognizer.recognize()
-    rospy.spin()
+    try:
+        rclpy.spin(speech_recognizer)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        speech_recognizer.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()

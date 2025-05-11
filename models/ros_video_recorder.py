@@ -15,7 +15,7 @@ class VideoRecorder(Node):
             10)
         self.bridge = CvBridge()
         self.frames = []
-        self.recording_duration = 10  # seconds
+        self.recording_duration = 60  # seconds
         self.start_time = None
         self.get_logger().info('Video Recorder Node has been started.')
 

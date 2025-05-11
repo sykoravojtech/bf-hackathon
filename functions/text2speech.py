@@ -7,5 +7,5 @@ def text_to_speech(text, lang='en'):
     playsound("output.mp3")  # Play the audio immediately
 
 if __name__ == "__main__":
-    text = input("Enter the text to convert to speech: ")  # Prompt for text input
+    text = "Hello, welcome to the text-to-speech demo!"  # Provide text directly
     text_to_speech(text)
