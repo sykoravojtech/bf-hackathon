@@ -1,9 +1,45 @@
 import threading
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import String
 from pathlib import Path
-from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage
+from tkinter import Button, Canvas, Entry, PhotoImage, Text, Tk
+
+# Add try/except block for ROS2 imports to handle version differences
+try:
+    import rclpy
+    from rclpy.node import Node
+    from std_msgs.msg import String
+
+    ROS_AVAILABLE = True
+except ImportError:
+    print("WARNING: ROS2 packages not found. Running in standalone mode.")
+    ROS_AVAILABLE = False
+
+    # Create dummy classes for non-ROS environment
+    class Node:
+        def __init__(self, name):
+            self.name = name
+
+        def create_subscription(self, *args, **kwargs):
+            return None
+
+        def create_publisher(self, *args, **kwargs):
+            return None
+
+        def get_logger(self):
+            return DummyLogger()
+
+        def destroy_node(self):
+            pass
+
+    class DummyLogger:
+        def info(self, msg):
+            print(f"INFO: {msg}")
+
+        def warn(self, msg):
+            print(f"WARN: {msg}")
+
+    class String:
+        def __init__(self, data=""):
+            self.data = data
 
 
 class GUI(Node):
@@ -26,8 +62,11 @@ class GUI(Node):
         self.window = Tk()
 
         # Get screen dimensions
-        self.screen_width = self.window.winfo_screenwidth()
-        self.screen_height = self.window.winfo_screenheight()
+        # self.screen_width = self.window.winfo_screenwidth()
+        # self.screen_height = self.window.winfo_screenheight()
+        # Set fixed screen dimensions to 1920x1080
+        self.screen_width = 1920
+        self.screen_height = 1080
 
         self.window.geometry(f"{self.screen_width}x{self.screen_height}")
         self.window.configure(bg="#2C2C2C")
@@ -48,6 +87,8 @@ class GUI(Node):
         # Store references to prevent garbage collection
         self.image_refs = []
         self.button_refs = []
+
+        self.create_stop_screen()
         print("GUI Node initialized successfully.")
 
     def relative_to_assets(self, path: str) -> Path:
@@ -63,14 +104,17 @@ class GUI(Node):
         self.button_refs = []
 
         # Load and place images
-        image_image_1 = PhotoImage(file=self.relative_to_assets("image_1.png"))
+        image_image_1 = PhotoImage(file=self.relative_to_assets("image_sew.png"))
         image_1 = self.canvas.create_image(190.0, 127.0, image=image_image_1)
         self.image_refs.append(image_image_1)
 
-        image_image_2 = PhotoImage(file=self.relative_to_assets("image_2.png"))
-        image_2 = self.canvas.create_image(
-            self.screen_width / 2, self.screen_height / 2, image=image_image_2
-        )
+        # Get main image dimensions for proper centering
+        image_image_2 = PhotoImage(file=self.relative_to_assets("image_stop.png"))
+        # Use exact center of screen (no decimal points to avoid subpixel rendering issues)
+        center_x = self.screen_width // 2
+        center_y = self.screen_height // 2
+
+        image_2 = self.canvas.create_image(center_x, center_y, image=image_image_2)
         self.image_refs.append(image_image_2)
 
         # Create button with hover effect
@@ -79,33 +123,52 @@ class GUI(Node):
             file=self.relative_to_assets("button_hover_1.png")
         )
 
-        button_1 = Button(
+        # Get actual button image dimensions
+        button_width = button_image_1.width()
+        button_height = button_image_1.height()
+
+        # Calculate position for the button - use exact same center x as the image
+        button_y = self.screen_height - 150
+
+        # Add offset to move button slightly to the left
+        button_offset_x = -20  # Negative value moves left, positive moves right
+
+        # Create a pure canvas-based button using the same center_x as the main image with offset
+        button_1 = self.canvas.create_image(
+            center_x + button_offset_x,  # Apply the offset here
+            button_y + (button_height / 2),  # y position (center of image)
             image=button_image_1,
-            borderwidth=0,
-            highlightthickness=0,
-            command=self.on_stop_button_press,
-            relief="flat",
+            tags=("button_1",),
         )
-        button_1.place(
-            x=(self.screen_width - 256) / 2,
-            y=self.screen_height - 150,
-            width=256.0,
-            height=91.0,
-        )
+
+        # Calculate hitbox for button click detection (used in event handler)
+        button_x = (
+            center_x + button_offset_x - (button_width / 2)
+        )  # Left edge of button
 
         # Store button and image references
         self.image_refs.extend([button_image_1, button_image_hover_1])
-        self.button_refs.append(button_1)
 
-        # Set up hover effect
-        def button_1_hover(e):
-            button_1.config(image=button_image_hover_1)
+        # Define event handlers for the canvas-based button
+        def on_button_enter(event):
+            self.canvas.itemconfig("button_1", image=button_image_hover_1)
 
-        def button_1_leave(e):
-            button_1.config(image=button_image_1)
+        def on_button_leave(event):
+            self.canvas.itemconfig("button_1", image=button_image_1)
 
-        button_1.bind("<Enter>", button_1_hover)
-        button_1.bind("<Leave>", button_1_leave)
+        def on_button_press(event):
+            # Check if click is within the button area
+            if (
+                button_x <= event.x <= button_x + button_width
+                and button_y <= event.y <= button_y + button_height
+            ):
+                self.on_stop_button_press()
+
+        # Bind events to the canvas
+        self.canvas.tag_bind("button_1", "<Enter>", on_button_enter)
+        self.canvas.tag_bind("button_1", "<Leave>", on_button_leave)
+        self.canvas.bind("<Button-1>", on_button_press)
+
         print("Stop screen created.")
 
     def create_going_screen(self):
@@ -115,13 +178,20 @@ class GUI(Node):
         self.image_refs = []  # Clear previous references
         self.button_refs = []
 
-        self.canvas.create_text(
-            self.screen_width / 2,
-            self.screen_height / 2,
-            text="GOING",
-            fill="green",
-            font=("Helvetica", 50, "bold"),
-        )
+        # Load and place images
+        image_image_1 = PhotoImage(file=self.relative_to_assets("image_sew.png"))
+        image_1 = self.canvas.create_image(190.0, 127.0, image=image_image_1)
+        self.image_refs.append(image_image_1)
+
+        # Get main image dimensions for proper centering
+        image_image_2 = PhotoImage(file=self.relative_to_assets("image_go.png"))
+        # Use exact center of screen (no decimal points to avoid subpixel rendering issues)
+        center_x = self.screen_width // 2
+        center_y = self.screen_height // 2
+
+        image_2 = self.canvas.create_image(center_x, center_y, image=image_image_2)
+        self.image_refs.append(image_image_2)
+
         print("Going screen created.")
 
     def create_waiting_screen(self):
@@ -131,13 +201,72 @@ class GUI(Node):
         self.image_refs = []  # Clear previous references
         self.button_refs = []
 
-        self.canvas.create_text(
-            self.screen_width / 2,
-            self.screen_height / 2,
-            text="WAITING",
-            fill="blue",
-            font=("Helvetica", 60, "bold"),
+        # Load and place images
+        image_image_1 = PhotoImage(file=self.relative_to_assets("image_sew.png"))
+        image_1 = self.canvas.create_image(190.0, 127.0, image=image_image_1)
+        self.image_refs.append(image_image_1)
+
+        # Get main image dimensions for proper centering
+        image_image_2 = PhotoImage(file=self.relative_to_assets("image_wait.png"))
+        # Use exact center of screen (no decimal points to avoid subpixel rendering issues)
+        center_x = self.screen_width // 2
+        center_y = self.screen_height // 2
+
+        image_2 = self.canvas.create_image(center_x, center_y, image=image_image_2)
+        self.image_refs.append(image_image_2)
+
+        # Create button with hover effect
+        button_image_1 = PhotoImage(file=self.relative_to_assets("button_1.png"))
+        button_image_hover_1 = PhotoImage(
+            file=self.relative_to_assets("button_hover_1.png")
         )
+
+        # Get actual button image dimensions
+        button_width = button_image_1.width()
+        button_height = button_image_1.height()
+
+        # Calculate position for the button - use exact same center x as the image
+        button_y = self.screen_height - 150
+
+        # Add offset to move button slightly to the left
+        button_offset_x = -20  # Negative value moves left, positive moves right
+
+        # Create a pure canvas-based button using the same center_x as the main image with offset
+        button_1 = self.canvas.create_image(
+            center_x + button_offset_x,  # Apply the offset here
+            button_y + (button_height / 2),  # y position (center of image)
+            image=button_image_1,
+            tags=("button_1",),
+        )
+
+        # Calculate hitbox for button click detection (used in event handler)
+        button_x = (
+            center_x + button_offset_x - (button_width / 2)
+        )  # Left edge of button
+
+        # Store button and image references
+        self.image_refs.extend([button_image_1, button_image_hover_1])
+
+        # Define event handlers for the canvas-based button
+        def on_button_enter(event):
+            self.canvas.itemconfig("button_1", image=button_image_hover_1)
+
+        def on_button_leave(event):
+            self.canvas.itemconfig("button_1", image=button_image_1)
+
+        def on_button_press(event):
+            # Check if click is within the button area
+            if (
+                button_x <= event.x <= button_x + button_width
+                and button_y <= event.y <= button_y + button_height
+            ):
+                self.on_stop_button_press()
+
+        # Bind events to the canvas
+        self.canvas.tag_bind("button_1", "<Enter>", on_button_enter)
+        self.canvas.tag_bind("button_1", "<Leave>", on_button_leave)
+        self.canvas.bind("<Button-1>", on_button_press)
+
         print("Waiting screen created.")
 
     def screen_callback(self, msg: String):
@@ -168,20 +297,26 @@ class GUI(Node):
     def handle_terminal_input(self):
         """Handle terminal input to change screens"""
         while True:
-            user_input = input("Enter screen command (1: Stop, 2: Going, 3: Waiting): ")
+            user_input = input(
+                "Enter screen command (1: Stop, 2: Going, 3: Waiting, exit or quit): "
+            )
+            print(f"{user_input=}")
             if user_input == "1":
                 self.create_stop_screen()
             elif user_input == "2":
                 self.create_going_screen()
             elif user_input == "3":
                 self.create_waiting_screen()
+            # elif user_input.lower() in ["exit", "quit"]:
+            #     break
             else:
                 print("Invalid input. Please enter 1, 2, or 3.")
 
 
 def main(args=None):
     print("Initializing ROS 2...")
-    rclpy.init(args=args)
+    if ROS_AVAILABLE:
+        rclpy.init(args=args)
     gui = GUI()
 
     # Start a thread for handling terminal input
@@ -195,7 +330,8 @@ def main(args=None):
         gui.get_logger().info("Shutting down GUI...")
     finally:
         gui.destroy_node()
-        rclpy.shutdown()
+        if ROS_AVAILABLE:
+            rclpy.shutdown()
         print("ROS 2 shutdown complete.")
 
 

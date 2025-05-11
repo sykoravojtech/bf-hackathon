@@ -26,7 +26,7 @@ from tkinter import Tk, Canvas, Entry, Text, Button, PhotoImage
 import time
 from pathlib import Path
 
-# Import waypoint navigation functionality
+# Import waypoint navigation    functionality
 # from functions.waypoint import WaypointNavigator  # Assuming functions/waypoint.py contains this class
 
 class Controller(Node):
@@ -35,10 +35,10 @@ class Controller(Node):
         print("Initializing Controller...")
         # Publishers
         print("Creating publishers...")
-        self.speaker_pub = self.create_publisher(String, "/speaker_say", 10)
-        self.rotate_pub = self.create_publisher(Float32, "/rotate", 10)
-        self.velocity_pub = self.create_publisher(Float32, "/set_velocity", 10)
-        self.display_pub = self.create_publisher(String, "/show_display", 10)
+        # self.speaker_pub = self.create_publisher(String, "/speaker_say", 10)
+        # self.rotate_pub = self.create_publisher(Float32, "/rotate", 10)
+        # self.velocity_pub = self.create_publisher(Float32, "/set_velocity", 10)
+        # self.display_pub = self.create_publisher(String, "/show_display", 10)
         self.goal_pub = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.confirmation_pub = self.create_publisher(String, '/navigation/confirmation', 10)
         self.image_pub_human = self.create_publisher(Image, "/output_image_human", 10)
@@ -46,23 +46,24 @@ class Controller(Node):
 
         # Subscribers
         print("Creating subscribers...")
-        self.create_subscription(String, "odometry", self.odometry_callback, 10)
-        self.create_subscription(Image, "camera", self.camera_callback, 10)
-        self.create_subscription(PointCloud2, "lidar", self.lidar_callback, 10)
-        self.create_subscription(String, "microphone", self.microphone_callback, 10)
-        self.create_subscription(Int32, "touch", self.touch_callback, 10)
+        # self.create_subscription(String, "odometry", self.odometry_callback, 10)
+        # self.create_subscription(Image, "camera", self.camera_callback, 10)
+        # self.create_subscription(PointCloud2, "lidar", self.lidar_callback, 10)
+        # self.create_subscription(String, "microphone", self.microphone_callback, 10)
+        # self.create_subscription(Int32, "touch", self.touch_callback, 10)
         self.create_subscription(BehaviorTreeLog, '/behavior_tree_log', self.behavior_tree_callback, 10)
-        self.create_subscription(Image, '/baumer/camera', self.image_callback_human, 10)
-        self.create_subscription(Image, "/baumer/camera", self.image_callback_hands, 10
+        self.create_subscription(Image, '/baumer/image', self.image_callback_human, 10)
+        self.create_subscription(Image, "/baumer/image", self.image_callback_hands, 10)
         self.create_subscription(Image, '/stop_detection_human', self.stop_detection_callback, 10)
 
         self.robot_on = True
         self.odometry = {"position": None, "direction": None, "speed": None}
-        self.behavior_tree_msg = None  # Initialize behavior_tree_msg
-        self.camera = None
-        self.lidar = None
-        self.microphone = None
-        self.touch = None
+        # self.behavior_tree_msg = None  # Initialize behavior_tree_msg
+        # self.camera = None
+        # self.lidar = None
+        # self.microphone = None
+        # self.image = None  # Initialize self.image
+        # self.touch = None
         self.waypoints = {
             "base_pose": {
             "position": {"x": 0.0, "y": 0.0, "z": 0.0},
@@ -78,22 +79,27 @@ class Controller(Node):
             }
         }
 
+        print("media pipe hands initialization...")
         self.mp_hands = mp.solutions.hands
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_drawing_styles = mp.solutions.drawing_styles
         self.hands = self.mp_hands.Hands(
         static_image_mode=False, max_num_hands=2, min_detection_confidence=0.5
         )
-        self.detection_enabled_hands = False
+        self.detection_enabled_hands = True
 
 
 
         # Load YOLOv8 model
-        model_path="/home/zany/workspace/src/bf-hackathon/models/vosk-model-small-en-us-0.15"
+        print("Loading YOLOv8 model...")
+        model_path="/home/zany/workspace/sew_ws/src/bf-hackathon/models/vosk-model-small-en-us-0.15"
         self.model = YOLO(model_path)
+        time.sleep(10)
 
         self.bridge = CvBridge()
         self.stop_detection_human = False
+        self.gesture_text = "No gesture detected"  # Initialize gesture_text
+        self.tts_engine = pyttsx3.init()  # Retain a reference to the TTS engine
 
         # Initialize waypoint navigator
         print("Initializing waypoint navigator...")
@@ -166,7 +172,7 @@ class Controller(Node):
         tts.save("output.mp3")
         playsound("output.mp3")  # Play the audio immediately
 
-    def robot_pipeline(self, input_mode="speech", offline=False, model_path="/home/zany/workspace/src/bf-hackathon/models/vosk-model-small-en-us-0.15"):
+    def robot_pipeline(self, input_mode="speech", offline=False, model_path="/home/zany/workspace/sew_ws/src/bf-hackathon/models/vosk-model-small-en-us-0.15"):
         # Define commands
         commands = {
             "turn left": "robot is turning left",
@@ -185,7 +191,7 @@ class Controller(Node):
             "move left": "robot is moving to the left",
             "can you dance": "Of course, if you show me how to dance"
         }
-
+        tts_engine = self.tts_engine  # Use the retained TTS engine
         # TTS engine
         tts_engine = pyttsx3.init()
 
@@ -309,28 +315,35 @@ class Controller(Node):
         else:
             return "Unknown Gesture"
 
-    def image_callback_hands(self, msg: Image):
+    def image_callback_hands(self, msg):
         # Store the latest image for processing
-        self.latest_image = msg
+        self.hand_image = msg
 
         if self.detection_enabled_hands:
-            self.process_image(msg)
+            self.process_image(hands_image)
 
-    def process_image(self, msg: Image):
+    def process_image(self, msg):
+        print("Starting process_image...")
         # Convert ROS Image message to OpenCV image
         cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        print("Converted ROS Image message to OpenCV image.")
 
         # Process the image with MediaPipe Hands
         rgb_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+        print("Converted BGR image to RGB for MediaPipe processing.")
         results = self.hands.process(rgb_image)
+        print("Processed image with MediaPipe Hands.")
 
         annotated_image = cv_image.copy()
-        gesture_text = "No hands detected"
+        self.gesture_text = "No hands detected"
+        print("Initialized annotated_image and gesture_text.")
 
         if results.multi_hand_landmarks:
+            print("Detected multiple hand landmarks.")
             for hand_landmarks, handedness in zip(
                 results.multi_hand_landmarks, results.multi_handedness
             ):
+                print("Processing hand landmarks...")
                 # Draw landmarks
                 self.mp_drawing.draw_landmarks(
                     annotated_image,
@@ -339,15 +352,19 @@ class Controller(Node):
                     self.mp_drawing_styles.get_default_hand_landmarks_style(),
                     self.mp_drawing_styles.get_default_hand_connections_style(),
                 )
+                print("Drew hand landmarks on the annotated image.")
 
                 # Recognize gesture
-                gesture_text = self.recognize_gesture(hand_landmarks)
-                self.get_logger().info(f"Recognized gesture: {gesture_text}")
+                self.gesture_text = self.recognize_gesture(hand_landmarks)
+                print(f"Recognized gesture: {self.gesture_text}")
+                self.get_logger().info(f"Recognized gesture: {self.gesture_text}")
+        else:
+            print("No hand landmarks detected.")
 
         # Overlay gesture text on the image
         cv2.putText(
             annotated_image,
-            gesture_text,
+            self.gesture_text,
             (20, 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -358,7 +375,7 @@ class Controller(Node):
 
         # Publish the annotated image
         output_msg = self.bridge.cv2_to_imgmsg(annotated_image, encoding="bgr8")
-        self.image_pub.publish(output_msg)
+        self.image_pub_hands.publish(output_msg)
 
 
 
@@ -446,29 +463,35 @@ class Controller(Node):
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 bbox_area = (x2 - x1) * (y2 - y1)
                 if bbox_area / img_area > close_threshold:
+                    print("Close human detected!")
                     return True
         return False
     
     def image_callback_human(self, msg):
+        self.stop_detection_human = False
+        # Store the latest image for processing
+        self.human_image = msg
+        self.get_logger().info("Received image for human detection")
+        # Check if detection is enabled
         if self.stop_detection_human:
             self.get_logger().info("Detection stopped.")
             return
-        self.image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.image = self.bridge.imgmsg_to_cv2(self.human_image, desired_encoding='bgr8')
         if self.detect_close_human(self.image):
             self.human_detected = True
             self.get_logger().info("A human is close!")
         else:
             self.get_logger().info("No close human detected.")
 
-    # def stop_detection_callback(self, msg):
-        # self.stop_detection = True
-        # self.get_logger().info("Stopping detection.")
+    def stop_detection_callback(self, msg):
+        self.stop_detection = True
+        self.get_logger().info("Stopping detection.")
     
-    def image_callback_hands(self, msg: Image):
+    def image_callback_hands(self, msg):
         # Store the latest image for processing
         self.latest_image = msg
 
-        if self.detection_enabled:
+        if self.detection_enabled_hands:
             self.process_image(msg)
         
 
@@ -483,29 +506,95 @@ def main(args=None):
     try:
         while controller.robot_on:
             rclpy.spin_once(controller, timeout_sec=1)
+
+
             # controller.send_goal_by_name("base_pose")
             controller.send_goal_by_name("serve_location")
+            if controller.human_detected:
+                controller.get_logger().info("Human detected, proceeding with interaction.")
+                controller.text_to_speech("Hello! I am Sewi, your interactive robot assistant. Would you like me to bring a coffee?", lang='en')
+                # controller.navigate_to_waypoints()
+                # controller.stop_detection_human = False
+                # if human_detected:
+                controller.robot_pipeline(input_mode="speech", offline=False, model_path="/home/zany/workspace/sew_ws/src/bf-hackathon/models/vosk-model-small-en-us-0.15")
+                controller.text_to_speech("Please confirm me that you want a coffee by showing me a thumbs up", lang='en')
+                time.sleep(5)
+                if controller.gesture_text == "Thumbs Up":
+                    print("Thumbs up detected, proceeding with coffee request.")
+                    controller.text_to_speech("Great Choice! Proceeding with your request.")
+                    # controller.get_logger().info("Thumbs up detected, proceeding with coffee request.")
+                    controller.send_goal_by_name("fridge1")
+                    time.sleep(8)
+                else:
+                    # controller.text_to_speech("I am sorry, I did not understand your request. Please show me a thumbs up if you want a beer", lang='en')
+                    print("Thumbs up not detected, proceeding with coffee request.")
+                    controller.text_to_speech("Great Choice! Proceeding with your request.")
+                    # controller.get_logger().info("Thumbs up detected, proceeding with coffee request.")
+                    controller.send_goal_by_name("fridge1")
+                    time.sleep(10)
 
-            controller.text_to_speech("Hello! I am Sewi, your interactive robot assistant. Would you like to have a Bier or coffee?", lang='en')
+                    if controller.human_detected:
+                        controller.get_logger().info("Human detected, proceeding with coffee request.")
+                        controller.text_to_speech("Hello! Can you please give me a coffee", lang='en')
+                        time.sleep(7)
+                        # controller.text_to_speech("Can you also please confirm me that you have put the coffee on my , you can either show me a thumbs up or click on the screen", lang='en')
+                        # controller.text_to_speech("can you show me a thumbs up if you have handed the beer to me")
+                        # if controller.gesture_text == "Thumbs Up":
+                        # time.sleep(4)
+                        controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
+                        # controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
+                        controller.send_goal_by_name("serve_location")
+                        time.sleep(8)
+                    else:
+                        controller.get_logger().info("No human detected, proceeding with coffee request.")
+                        controller.text_to_speech("Great Choice! Proceeding with your request.")
+                        # controller.get_logger().info("Thumbs up detected, proceeding with coffee request.")
+                        controller.send_goal_by_name("fridge1")
+                        time.sleep(23)
+
+                    #     controller.text_to_speech("Please take the coffee", lang='en')
+                    #     controller.text_to_speech("If you liked it, show me a victory", lang='en')
+                    #     controller.text_to_speech("Thank You, Have a nice day!", lang='en')
+                    # controller.text_to_speech("Hello! Can you please give me a cup of coffee", lang='en')
+                    # controller.text_to_speech("Can you also please confirm me that you have put the coffee on my surface, you can either show me a thumbs up or click on the screen", lang='en')
+                    # controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
+                    # controller.send_goal_by_name("serve_location")
+                    # controller.text_to_speech("Please take the coffee", lang='en')
+                    # controller.text_to_speech("If you liked it, show me a victory", lang='en')
+                        controller.text_to_speech("Have a nice day!", lang='en')
+                        break
+                # controller.get_logger().info("Starting human detection...")
+                # controller.send_goal_by_name("fridge1")
+                # controller.text_to_speech("Hello! Can you please give me a cup of coffee", lang='en')
+                # controller.text_to_speech("Can you also please confirm me that you have put the coffee on my surface, you can either show me a thumbs up or click on the screen", lang='en')
+                # controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
+                # controller.send_goal_by_name("serve_location")
+                # controller.text_to_speech("Please take the coffee", lang='en')
+                # controller.text_to_speech("If you liked it, show me a victory", lang='en')
+                # controller.text_to_speech("Thank You, Have a nice day!", lang='en')
+            # else:
+            # controller.get_logger().info("No human detected, continuing to navigate.")
+            # controller.text_to_speech("Hello! I am Sewi, your interactive robot assistant. Would you like to have a Bier or coffee?", lang='en')
             # controller.navigate_to_waypoints()
             # self.stop_detection_human = False
             # if human_detected:
-            controller.robot_pipeline(input_mode="speech", offline=False, model_path="/home/zany/workspace/sew_ws/src/bf-hackathon/models/vosk-model-small-en-us-0.15")
-            controller.text_to_speech("Please confirm me that you want a coffee or a beer by showing me a thumbs up or clicking on the screen", lang='en')
+            # controller.robot_pipeline(input_mode="speech", offline=False, model_path="/home/zany/workspace/sew_ws/src/bf-hackathon/models/vosk-model-small-en-us-0.15")
+            # controller.text_to_speech("Please confirm me that you want a coffee or a beer by showing me a thumbs up or clicking on the screen", lang='en')
             # controller.get_logger().info("Starting human detection...")
-            controller.send_goal_by_name("fridge1")
-            controller.text_to_speech("Hello! Can you please give me a cup of coffee", lang='en')
-            controller.text_to_speech("Can you also please confirm me that you have put the coffee on my surface, you can either show me a thumbs up or click on the screen", lang='en')
-            controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
-            controller.send_goal_by_name("serve_location")
-            controller.text_to_speech("Please take the coffee", lang='en')
-            controller.text_to_speech("If you liked it, show me a victory", lang='en')
-            controller.text_to_speech("Thank You, Have a nice day!", lang='en')
+            # controller.send_goal_by_name("fridge1")
+            # controller.text_to_speech("Hello! Can you please give me a cup of coffee", lang='en')
+            # controller.text_to_speech("Can you also please confirm me that you have put the coffee on my surface, you can either show me a thumbs up or click on the screen", lang='en')
+            # controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
+            # controller.send_goal_by_name("serve_location")
+            # controller.text_to_speech("Please take the coffee", lang='en')
+            # controller.text_to_speech("If you liked it, show me a victory", lang='en')
+            # controller.text_to_speech("Thank You, Have a nice day!", lang='en')
+        
     
             
             
             
-            controller.scenario_check_loop()
+            # controller.scenario_check_loop()
     except KeyboardInterrupt:
         controller.get_logger().info("Shutting down node...")
     finally:
