@@ -43,6 +43,12 @@ class Controller(Node):
         self.confirmation_pub = self.create_publisher(String, '/navigation/confirmation', 10)
         self.image_pub_human = self.create_publisher(Image, "/output_image_human", 10)
         self.image_pub_hands = self.create_publisher(Image, "/output_image_hands", 10)
+        self.status_pub = self.create_publisher(String, "/screen_command", 10)
+
+        # Example usage to publish the strings
+        # self.status_pub.publish(String(data="stop"))
+        # self.status_pub.publish(String(data="going"))
+        # self.status_pub.publish(String(data="waiting"))
 
         # Subscribers
         print("Creating subscribers...")
@@ -98,6 +104,7 @@ class Controller(Node):
 
         self.bridge = CvBridge()
         self.stop_detection_human = False
+        self.human_detected = False  # Initialize human_detected
         self.gesture_text = "No gesture detected"  # Initialize gesture_text
         self.tts_engine = pyttsx3.init()  # Retain a reference to the TTS engine
 
@@ -511,6 +518,7 @@ def main(args=None):
             # controller.send_goal_by_name("base_pose")
             controller.send_goal_by_name("serve_location")
             if controller.human_detected:
+                controller.status_pub.publish(String(data="stop"))
                 controller.get_logger().info("Human detected, proceeding with interaction.")
                 controller.text_to_speech("Hello! I am Sewi, your interactive robot assistant. Would you like me to bring a coffee?", lang='en')
                 # controller.navigate_to_waypoints()
@@ -520,12 +528,14 @@ def main(args=None):
                 controller.text_to_speech("Please confirm me that you want a coffee by showing me a thumbs up", lang='en')
                 time.sleep(5)
                 if controller.gesture_text == "Thumbs Up":
+                    controller.status_pub.publish(String(data="going"))
                     print("Thumbs up detected, proceeding with coffee request.")
                     controller.text_to_speech("Great Choice! Proceeding with your request.")
                     # controller.get_logger().info("Thumbs up detected, proceeding with coffee request.")
                     controller.send_goal_by_name("fridge1")
                     time.sleep(8)
                 else:
+                    controller.status_pub.publish(String(data="going"))
                     # controller.text_to_speech("I am sorry, I did not understand your request. Please show me a thumbs up if you want a beer", lang='en')
                     print("Thumbs up not detected, proceeding with coffee request.")
                     controller.text_to_speech("Great Choice! Proceeding with your request.")
@@ -536,7 +546,8 @@ def main(args=None):
                     if controller.human_detected:
                         controller.get_logger().info("Human detected, proceeding with coffee request.")
                         controller.text_to_speech("Hello! Can you please give me a coffee", lang='en')
-                        time.sleep(7)
+                        controller.status_pub.publish(String(data="waiting"))
+                        time.sleep(13)
                         # controller.text_to_speech("Can you also please confirm me that you have put the coffee on my , you can either show me a thumbs up or click on the screen", lang='en')
                         # controller.text_to_speech("can you show me a thumbs up if you have handed the beer to me")
                         # if controller.gesture_text == "Thumbs Up":
@@ -544,13 +555,18 @@ def main(args=None):
                         controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
                         # controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
                         controller.send_goal_by_name("serve_location")
+                        controller.status_pub.publish(String(data="going"))
                         time.sleep(8)
                     else:
                         controller.get_logger().info("No human detected, proceeding with coffee request.")
-                        controller.text_to_speech("Great Choice! Proceeding with your request.")
+                        controller.text_to_speech("Hello! Can you please give me a coffee", lang='en')
+                        self.status_pub.publish(String(data="waiting"))
+                        time.sleep(13)
+                        controller.text_to_speech("Thank you for the coffee, I am going to serve it now", lang='en')
                         # controller.get_logger().info("Thumbs up detected, proceeding with coffee request.")
-                        controller.send_goal_by_name("fridge1")
-                        time.sleep(23)
+                        controller.send_goal_by_name("serve_location")
+                        self.status_pub.publish(String(data="going"))
+                        time.sleep(20)
 
                     #     controller.text_to_speech("Please take the coffee", lang='en')
                     #     controller.text_to_speech("If you liked it, show me a victory", lang='en')
