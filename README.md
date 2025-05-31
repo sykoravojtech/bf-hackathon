@@ -78,3 +78,9 @@ Our system integrates a variety of cutting-edge models and open-source tools for
 
 We believe robots should feel like helpful teammates — not more work. 🙌
 
+## Black Forest Hackathon: Data Decoded (May 2025, Freiburg)
+[Hackathon web](https://www.blackforesthackathon.de/may/)
+
+[Challenges: Data Decoded](https://www.blackforesthackathon.de/challenges-data-decoded/)
+
+
