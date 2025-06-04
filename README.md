@@ -1,5 +1,9 @@
 # bf-hackathon
 
+## Demo Video
+
+[▶️ Watch the Sewwy Robot demo](bf-hackathon_sewwy-robot.mp4)
+
 ## run project
 ```
 poetry run python main.py
