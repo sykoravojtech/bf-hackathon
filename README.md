@@ -4,6 +4,8 @@
 
 [▶️ Watch the Sewwy Robot demo](bf-hackathon_sewwy-robot.mp4)
 
+[Pitch presentation](humor.io_pitch.pdf)
+
 ## run project
 ```
 poetry run python main.py
